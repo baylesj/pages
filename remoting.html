@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Media Remoting & Remote Playback Test Page</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #fafafa; color: #333; line-height: 1.45; }
+        h1 { font-size: 1.5em; margin-bottom: 0.25em; }
+        .subtitle { color: #555; font-size: 0.95em; margin-bottom: 15px; }
+        .nav { margin-bottom: 15px; font-size: 0.9em; }
+        .nav a { color: #0052cc; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        video { width: 100%; max-height: 520px; background: #000; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: block; }
+        .panel { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        select, button { padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; box-sizing: border-box; }
+        select { width: 100%; font-family: monospace; margin-top: 6px; }
+        .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; margin-bottom: 10px; }
+        button { background: #0052cc; color: white; border: none; transition: background 0.2s; flex: 1 1 auto; }
+        button:hover { background: #0047b3; }
+        button.secondary { background: #eef3fc; color: #0052cc; border: 1px solid #b3d1ff; }
+        button.secondary:hover { background: #dce8fc; }
+        .toggles { display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; margin-top: 8px; }
+        .toggles label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; font-family: monospace; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+        th { color: #666; font-weight: 600; width: 220px; font-family: system-ui, sans-serif; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-ok { background: #e6f4ea; color: #137333; }
+        .badge-warn { background: #fef7e0; color: #b06000; }
+        .badge-neutral { background: #f1f3f4; color: #3c4043; }
+        #event-log { font-family: monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px; }
+        .guide { font-size: 13px; color: #444; }
+        .guide code { background: #f1f3f4; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+        .guide ul { margin: 6px 0 0 20px; padding: 0; }
+        .guide li { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="media_test.html">&larr; All Codec &amp; Container Test Files (media_test.html)</a>
+    </div>
+    <h1>Chrome Media Remoting &amp; Remote Playback Test Page</h1>
+    <div class="subtitle">
+        Plain HTML5 <code>&lt;video&gt;</code> page without the Cast Web Sender SDK. Designed for testing Global Media Controls (GMC) Remote Playback, in-player Remote Playback prompts, and Tab Mirroring fullscreen Media Remoting.
+    </div>
+
+    <div class="panel">
+        <label for="stream-select"><strong>Select Remoting Test Stream (90s duration, unencrypted audio + video):</strong></label>
+        <select id="stream-select">
+            <option value="data/remoting-h264-aac-90s.mp4" data-vcodec="h264 (avc1.42E01F)" data-acodec="aac (mp4a.40.2)" data-container="MP4" selected>
+                remoting-h264-aac-90s.mp4 — H.264 + AAC (1280x720, 90s) [Recommended: all remoting receivers]
+            </option>
+            <option value="data/remoting-vp8-opus-90s.webm" data-vcodec="vp8" data-acodec="opus" data-container="WebM">
+                remoting-vp8-opus-90s.webm — VP8 + Opus (1280x720, 90s) [All remoting receivers]
+            </option>
+            <option value="data/remoting-vp9-opus-90s.webm" data-vcodec="vp9" data-acodec="opus" data-container="WebM">
+                remoting-vp9-opus-90s.webm — VP9 + Opus (1280x720, 90s) [VP9-capable receivers]
+            </option>
+        </select>
+
+        <div class="btn-row">
+            <button id="btn-play">Play</button>
+            <button id="btn-pause" class="secondary">Pause</button>
+            <button id="btn-restart" class="secondary">Restart (0:00)</button>
+            <button id="btn-seek" class="secondary">Seek +15s</button>
+            <button id="btn-fullscreen">Enter Fullscreen</button>
+            <button id="btn-remote">Prompt Remote Playback (video.remote.prompt)</button>
+        </div>
+
+        <div class="toggles">
+            <label>
+                <input type="checkbox" id="chk-loop" checked>
+                Loop Playback
+            </label>
+            <label>
+                <input type="checkbox" id="chk-disable-remote">
+                Set <code>disableRemotePlayback</code> attribute
+            </label>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <video id="player" controls loop preload="metadata" src="data/remoting-h264-aac-90s.mp4"></video>
+    </div>
+
+    <div class="panel">
+        <strong>Live Remoting &amp; Media Element Status</strong>
+        <table style="margin-top: 8px;">
+            <tr><th>Source URL</th><td id="status-src">data/remoting-h264-aac-90s.mp4</td></tr>
+            <tr><th>Codecs (Video / Audio)</th><td id="status-codecs">h264 (avc1.42E01F) / aac (mp4a.40.2)</td></tr>
+            <tr><th>Duration &amp; Thresholds</th><td id="status-duration">Loading metadata...</td></tr>
+            <tr><th>Playback Position</th><td id="status-time">0.0s (paused)</td></tr>
+            <tr><th>RemotePlayback State (<code>video.remote.state</code>)</th><td><span id="status-remote-state" class="badge badge-neutral">disconnected</span></td></tr>
+            <tr><th>Sink Availability (<code>watchAvailability</code>)</th><td id="status-availability">Checking...</td></tr>
+            <tr><th><code>disableRemotePlayback</code></th><td id="status-disabled">false</td></tr>
+            <tr><th>Last Error</th><td id="status-error" style="color: #d93025;">None</td></tr>
+        </table>
+
+        <div style="margin-top: 12px;">
+            <strong>Event Log</strong>
+            <div id="event-log"></div>
+        </div>
+    </div>
+
+    <div class="panel guide">
+        <strong>How to Verify in <code>chrome://media-router-internals</code></strong>
+        <ul>
+            <li><strong>GMC Cast button or <code>video.remote.prompt()</code> (Remote Playback / Remoting without Fullscreen):</strong> Play the video first so Chrome's Media Session registers it in GMC, then select a remoting-capable receiver from the GMC media card. The route's media source will start with <code>remote-playback:media-element?tab_id=...&amp;video_codec=...&amp;audio_codec=...</code>.</li>
+            <li><strong>Toolbar Cast icon &rarr; Cast tab (Tab Mirroring &amp; Fullscreen Remoting):</strong> Selecting a receiver from the browser toolbar Cast dialog starts tab mirroring (<code>urn:x-org.chromium.media:source:tab:...</code>). Entering fullscreen while playing switches the session to Media Remoting after ~5 seconds on supported receivers, and falls back to tab mirroring if switched to a receiver that does not support remoting.</li>
+            <li><strong>Why this differs from Vimeo / YouTube:</strong> Sites that load the Cast Web Sender SDK register a default <code>PresentationRequest</code> (<code>cast:&lt;AppID&gt;</code>), which launches a native receiver web app instead of Chrome Media Remoting. This page intentionally does not register a <code>PresentationRequest</code>.</li>
+        </ul>
+    </div>
+
+    <script>
+        const player = document.getElementById("player");
+        const streamSelect = document.getElementById("stream-select");
+        const chkLoop = document.getElementById("chk-loop");
+        const chkDisableRemote = document.getElementById("chk-disable-remote");
+        const eventLog = document.getElementById("event-log");
+
+        const statusEls = {
+            src: document.getElementById("status-src"),
+            codecs: document.getElementById("status-codecs"),
+            duration: document.getElementById("status-duration"),
+            time: document.getElementById("status-time"),
+            remoteState: document.getElementById("status-remote-state"),
+            availability: document.getElementById("status-availability"),
+            disabled: document.getElementById("status-disabled"),
+            error: document.getElementById("status-error")
+        };
+
+        let availabilityWatchId = null;
+
+        function logEvent(msg) {
+            const now = new Date().toISOString().split("T")[1].replace("Z", "");
+            const line = `[${now}] ${msg}\n`;
+            eventLog.textContent = line + eventLog.textContent;
+        }
+
+        function updateRemoteStateBadge() {
+            if (!player.remote) {
+                statusEls.remoteState.textContent = "unsupported";
+                statusEls.remoteState.className = "badge badge-warn";
+                return;
+            }
+            const state = player.remote.state;
+            statusEls.remoteState.textContent = state;
+            if (state === "connected") {
+                statusEls.remoteState.className = "badge badge-ok";
+            } else if (state === "connecting") {
+                statusEls.remoteState.className = "badge badge-warn";
+            } else {
+                statusEls.remoteState.className = "badge badge-neutral";
+            }
+        }
+
+        function setupAvailabilityMonitoring() {
+            if (!player.remote || typeof player.remote.watchAvailability !== "function") {
+                statusEls.availability.textContent = "RemotePlayback API not available";
+                return;
+            }
+            if (availabilityWatchId !== null) {
+                player.remote.cancelWatchAvailability(availabilityWatchId).catch(() => {});
+                availabilityWatchId = null;
+            }
+            player.remote.watchAvailability((available) => {
+                statusEls.availability.innerHTML = available
+                    ? '<span class="badge badge-ok">Available (compatible sink found)</span>'
+                    : '<span class="badge badge-neutral">Unavailable (no compatible sink or monitoring off)</span>';
+                logEvent(`RemotePlayback availability changed: ${available}`);
+            }).then((id) => {
+                availabilityWatchId = id;
+            }).catch((err) => {
+                statusEls.availability.textContent = `watchAvailability error: ${err.message}`;
+            });
+        }
+
+        function loadSelectedStream() {
+            const opt = streamSelect.options[streamSelect.selectedIndex];
+            const path = opt.value;
+            const vcodec = opt.dataset.vcodec;
+            const acodec = opt.dataset.acodec;
+            const wasPlaying = !player.paused;
+
+            player.src = path;
+            statusEls.src.textContent = new URL(path, window.location.href).href;
+            statusEls.codecs.textContent = `${vcodec} / ${acodec}`;
+            statusEls.error.textContent = "None";
+            player.load();
+            logEvent(`Loaded stream: ${path} (${vcodec} / ${acodec})`);
+            if (wasPlaying) {
+                player.play().catch(err => {
+                    statusEls.error.textContent = err.message;
+                });
+            }
+        }
+
+        streamSelect.addEventListener("change", loadSelectedStream);
+
+        document.getElementById("btn-play").addEventListener("click", () => {
+            player.play().catch(err => {
+                statusEls.error.textContent = `Play failed: ${err.message}`;
+                logEvent(`Play error: ${err.message}`);
+            });
+        });
+
+        document.getElementById("btn-pause").addEventListener("click", () => player.pause());
+
+        document.getElementById("btn-restart").addEventListener("click", () => {
+            player.currentTime = 0;
+            player.play().catch(() => {});
+        });
+
+        document.getElementById("btn-seek").addEventListener("click", () => {
+            player.currentTime = Math.min(player.duration || 90, player.currentTime + 15);
+        });
+
+        document.getElementById("btn-fullscreen").addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+                player.requestFullscreen().catch(err => {
+                    statusEls.error.textContent = `Fullscreen error: ${err.message}`;
+                });
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        });
+
+        document.getElementById("btn-remote").addEventListener("click", () => {
+            if (player.remote && typeof player.remote.prompt === "function") {
+                logEvent("Calling video.remote.prompt()...");
+                player.remote.prompt().catch(err => {
+                    statusEls.error.textContent = `Remote Playback prompt: ${err.message}`;
+                    logEvent(`remote.prompt() rejected: ${err.name}: ${err.message}`);
+                });
+            } else {
+                statusEls.error.textContent = "Remote Playback API not supported";
+            }
+        });
+
+        chkLoop.addEventListener("change", () => {
+            player.loop = chkLoop.checked;
+            logEvent(`player.loop = ${player.loop}`);
+        });
+
+        chkDisableRemote.addEventListener("change", () => {
+            player.disableRemotePlayback = chkDisableRemote.checked;
+            statusEls.disabled.textContent = String(player.disableRemotePlayback);
+            logEvent(`player.disableRemotePlayback = ${player.disableRemotePlayback}`);
+        });
+
+        player.addEventListener("loadedmetadata", () => {
+            const dur = player.duration;
+            const passesGmc = dur > 5;
+            const passesRemotePlayback = dur > 15;
+            const passesFullscreenRemoting = dur > 60;
+            statusEls.duration.innerHTML =
+                `${dur.toFixed(2)}s (${player.videoWidth}x${player.videoHeight}) &mdash; ` +
+                `GMC (&gt;5s): ${passesGmc ? "✅" : "❌"}, ` +
+                `RemotePlayback (&gt;15s): ${passesRemotePlayback ? "✅" : "❌"}, ` +
+                `Fullscreen Remoting (&gt;60s): ${passesFullscreenRemoting ? "✅" : "❌"}`;
+            logEvent(`Metadata loaded: duration=${dur.toFixed(2)}s, size=${player.videoWidth}x${player.videoHeight}`);
+            setupAvailabilityMonitoring();
+        });
+
+        player.addEventListener("timeupdate", () => {
+            statusEls.time.textContent = `${player.currentTime.toFixed(1)}s / ${(player.duration || 0).toFixed(1)}s (${player.paused ? "paused" : "playing"})`;
+        });
+
+        player.addEventListener("play", () => logEvent("Media event: play"));
+        player.addEventListener("playing", () => logEvent("Media event: playing"));
+        player.addEventListener("pause", () => logEvent("Media event: pause"));
+        player.addEventListener("error", () => {
+            const msg = player.error ? `Code ${player.error.code}: ${player.error.message}` : "Unknown media error";
+            statusEls.error.textContent = msg;
+            logEvent(`Media error: ${msg}`);
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+            logEvent(`Fullscreen changed: ${document.fullscreenElement ? "entered fullscreen" : "exited fullscreen"}`);
+        });
+
+        if (player.remote) {
+            player.remote.addEventListener("connecting", () => {
+                updateRemoteStateBadge();
+                logEvent("RemotePlayback event: connecting");
+            });
+            player.remote.addEventListener("connect", () => {
+                updateRemoteStateBadge();
+                logEvent("RemotePlayback event: connect (remoting active)");
+            });
+            player.remote.addEventListener("disconnect", () => {
+                updateRemoteStateBadge();
+                logEvent("RemotePlayback event: disconnect (local/mirroring resumed)");
+            });
+        }
+
+        statusEls.src.textContent = new URL(player.getAttribute("src"), window.location.href).href;
+        updateRemoteStateBadge();
+        logEvent("Page initialized.");
+    </script>
+</body>
+</html>
